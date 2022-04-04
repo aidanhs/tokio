@@ -1,8 +1,7 @@
 use crate::codec::Framed;
 
-use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf, VecWithInitialized};
 
-use bytes::BytesMut;
 use std::io;
 
 /// Decoding of frames via buffers.
@@ -121,7 +120,7 @@ pub trait Decoder {
     ///
     /// An optimal buffer management strategy minimizes reallocations and
     /// over-allocations.
-    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error>;
+    fn decode(&mut self, src: &mut VecWithInitialized<Vec<u8>>) -> Result<Option<Self::Item>, Self::Error>;
 
     /// A default method available to be called when there are no more bytes
     /// available to be read from the underlying I/O.
@@ -141,7 +140,7 @@ pub trait Decoder {
     /// Once `None` has been returned, `decode_eof` won't be called again until
     /// an attempt to resume the stream has been made, where the underlying stream
     /// actually returned more data.
-    fn decode_eof(&mut self, buf: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+    fn decode_eof(&mut self, buf: &mut VecWithInitialized<Vec<u8>>) -> Result<Option<Self::Item>, Self::Error> {
         match self.decode(buf)? {
             Some(frame) => Ok(Some(frame)),
             None => {

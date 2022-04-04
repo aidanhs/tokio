@@ -53,6 +53,7 @@ cfg_io_util! {
 
     mod read_to_end;
     mod vec_with_initialized;
+    pub use vec_with_initialized::{VecWithInitialized, into_read_buf_parts};
     cfg_process! {
         pub(crate) use read_to_end::read_to_end;
     }

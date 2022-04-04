@@ -2,7 +2,7 @@ use crate::codec::decoder::Decoder;
 use crate::codec::encoder::Encoder;
 
 use futures_core::Stream;
-use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf, VecWithInitialized, into_read_buf_parts};
 
 use bytes::BytesMut;
 use futures_core::ready;
@@ -31,7 +31,7 @@ const BACKPRESSURE_BOUNDARY: usize = INITIAL_CAPACITY;
 pub(crate) struct ReadFrame {
     pub(crate) eof: bool,
     pub(crate) is_readable: bool,
-    pub(crate) buffer: BytesMut,
+    pub(crate) buffer: VecWithInitialized<Vec<u8>>,
     pub(crate) has_errored: bool,
 }
 
@@ -50,7 +50,7 @@ impl Default for ReadFrame {
         Self {
             eof: false,
             is_readable: false,
-            buffer: BytesMut::with_capacity(INITIAL_CAPACITY),
+            buffer: VecWithInitialized::new(Vec::with_capacity(INITIAL_CAPACITY)),
             has_errored: false,
         }
     }
@@ -64,9 +64,9 @@ impl Default for WriteFrame {
     }
 }
 
-impl From<BytesMut> for ReadFrame {
-    fn from(mut buffer: BytesMut) -> Self {
-        let size = buffer.capacity();
+impl From<VecWithInitialized<Vec<u8>>> for ReadFrame {
+    fn from(mut buffer: VecWithInitialized<Vec<u8>>) -> Self {
+        let size = buffer.get_read_buf().capacity();
         if size < INITIAL_CAPACITY {
             buffer.reserve(INITIAL_CAPACITY - size);
         }
@@ -214,14 +214,20 @@ where
             // Make sure we've got room for at least one byte to read to ensure
             // that we don't get a spurious 0 that looks like EOF.
             state.buffer.reserve(1);
-            let bytect = match poll_read_buf(pinned.inner.as_mut(), cx, &mut state.buffer).map_err(
+            let mut rb = state.buffer.get_read_buf();
+            let filled = rb.filled().len();
+            let res = pinned.inner.as_mut().poll_read(cx, &mut rb);
+            let ct = rb.filled().len() - filled;
+            let parts = into_read_buf_parts(rb);
+            state.buffer.apply_read_buf(parts);
+            let bytect = match res.map_err(
                 |err| {
                     trace!("Got an error, going to errored state");
                     state.has_errored = true;
                     err
                 },
             )? {
-                Poll::Ready(ct) => ct,
+                Poll::Ready(()) => ct,
                 // implicit reading -> reading or implicit paused -> paused
                 Poll::Pending => return Poll::Pending,
             };

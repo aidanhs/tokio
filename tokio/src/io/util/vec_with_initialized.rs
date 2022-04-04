@@ -10,7 +10,7 @@ mod private {
 
 /// A sealed trait that constrains the generic type parameter in `VecWithInitialized<V>`.  That struct's safety relies
 /// on certain invariants upheld by `Vec<u8>`.
-pub(crate) trait VecU8: AsMut<Vec<u8>> + private::Sealed {}
+pub trait VecU8: AsMut<Vec<u8>> + private::Sealed {}
 
 impl VecU8 for Vec<u8> {}
 impl VecU8 for &mut Vec<u8> {}
@@ -24,7 +24,7 @@ impl VecU8 for &mut Vec<u8> {}
 /// This struct has the safety invariant that the first `num_initialized` of the
 /// vector's allocation must be initialized at any time.
 #[derive(Debug)]
-pub(crate) struct VecWithInitialized<V> {
+pub struct VecWithInitialized<V> {
     vec: V,
     // The number of initialized bytes in the vector.
     // Always between `vec.len()` and `vec.capacity()`.
@@ -43,7 +43,7 @@ impl<V> VecWithInitialized<V>
 where
     V: VecU8,
 {
-    pub(crate) fn new(mut vec: V) -> Self {
+    pub fn new(mut vec: V) -> Self {
         // SAFETY: The safety invariants of vector guarantee that the bytes up
         // to its length are initialized.
         Self {
@@ -52,7 +52,13 @@ where
         }
     }
 
-    pub(crate) fn reserve(&mut self, num_bytes: usize) {
+    pub fn drop_first(&mut self, num_bytes: usize) {
+        let vec = self.vec.as_mut();
+        vec.drain(..num_bytes);
+        self.num_initialized = vec.len();
+    }
+
+    pub fn reserve(&mut self, num_bytes: usize) {
         let vec = self.vec.as_mut();
         if vec.capacity() - vec.len() >= num_bytes {
             return;
@@ -64,11 +70,11 @@ where
     }
 
     #[cfg(feature = "io-util")]
-    pub(crate) fn is_empty(&mut self) -> bool {
+    pub fn is_empty(&mut self) -> bool {
         self.vec.as_mut().is_empty()
     }
 
-    pub(crate) fn get_read_buf<'a>(&'a mut self) -> ReadBuf<'a> {
+    pub fn get_read_buf<'a>(&'a mut self) -> ReadBuf<'a> {
         let num_initialized = self.num_initialized;
 
         // SAFETY: Creating the slice is safe because of the safety invariants
@@ -92,7 +98,7 @@ where
         read_buf
     }
 
-    pub(crate) fn apply_read_buf(&mut self, parts: ReadBufParts) {
+    pub fn apply_read_buf(&mut self, parts: ReadBufParts) {
         let vec = self.vec.as_mut();
         assert_eq!(vec.as_ptr(), parts.ptr);
 
@@ -114,7 +120,7 @@ where
     }
 }
 
-pub(crate) struct ReadBufParts {
+pub struct ReadBufParts {
     // Pointer is only used to check that the ReadBuf actually came from the
     // right VecWithInitialized.
     ptr: *const u8,
@@ -123,7 +129,7 @@ pub(crate) struct ReadBufParts {
 }
 
 // This is needed to release the borrow on `VecWithInitialized<V>`.
-pub(crate) fn into_read_buf_parts(rb: ReadBuf<'_>) -> ReadBufParts {
+pub fn into_read_buf_parts(rb: ReadBuf<'_>) -> ReadBufParts {
     ReadBufParts {
         ptr: rb.filled().as_ptr(),
         len: rb.filled().len(),

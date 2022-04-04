@@ -3,7 +3,7 @@ use crate::codec::encoder::Encoder;
 use crate::codec::framed_impl::{FramedImpl, RWFrames, ReadFrame, WriteFrame};
 
 use futures_core::Stream;
-use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf, VecWithInitialized};
 
 use bytes::BytesMut;
 use futures_sink::Sink;
@@ -105,7 +105,7 @@ where
                     read: ReadFrame {
                         eof: false,
                         is_readable: false,
-                        buffer: BytesMut::with_capacity(capacity),
+                        buffer: VecWithInitialized::new(Vec::with_capacity(capacity)),
                         has_errored: false,
                     },
                     write: WriteFrame::default(),
@@ -233,20 +233,22 @@ impl<T, U> Framed<T, U> {
         self.project().inner.project().codec
     }
 
-    /// Returns a reference to the read buffer.
-    pub fn read_buffer(&self) -> &BytesMut {
-        &self.inner.state.read.buffer
-    }
+    // TODO
+    ///// Returns a reference to the read buffer.
+    //pub fn read_buffer(&self) -> &BytesMut {
+    //    &self.inner.state.read.buffer
+    //}
 
     /// Returns a mutable reference to the read buffer.
-    pub fn read_buffer_mut(&mut self) -> &mut BytesMut {
-        &mut self.inner.state.read.buffer
+    pub fn read_buffer_mut(&mut self) -> ReadBuf<'_> {
+        self.inner.state.read.buffer.get_read_buf()
     }
 
-    /// Returns a reference to the write buffer.
-    pub fn write_buffer(&self) -> &BytesMut {
-        &self.inner.state.write.buffer
-    }
+    // TODO
+    ///// Returns a reference to the write buffer.
+    //pub fn write_buffer(&self) -> &BytesMut {
+    //    &self.inner.state.write.buffer
+    //}
 
     /// Returns a mutable reference to the write buffer.
     pub fn write_buffer_mut(&mut self) -> &mut BytesMut {
@@ -346,7 +348,7 @@ pub struct FramedParts<T, U> {
     pub codec: U,
 
     /// The buffer with read but unprocessed data.
-    pub read_buf: BytesMut,
+    pub read_buf: VecWithInitialized<Vec<u8>>,
 
     /// A buffer with unprocessed data which are not written yet.
     pub write_buf: BytesMut,
@@ -365,7 +367,7 @@ impl<T, U> FramedParts<T, U> {
         FramedParts {
             io,
             codec,
-            read_buf: BytesMut::new(),
+            read_buf: VecWithInitialized::new(Vec::new()),
             write_buf: BytesMut::new(),
             _priv: (),
         }

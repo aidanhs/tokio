@@ -258,8 +258,8 @@
 //! [`split_to`]: fn@bytes::BytesMut::split_to
 //! [`advance`]: fn@bytes::Buf::advance
 
-mod bytes_codec;
-pub use self::bytes_codec::BytesCodec;
+//mod bytes_codec;
+//pub use self::bytes_codec::BytesCodec;
 
 mod decoder;
 pub use self::decoder::Decoder;
@@ -283,8 +283,8 @@ pub use self::framed_write::FramedWrite;
 pub mod length_delimited;
 pub use self::length_delimited::{LengthDelimitedCodec, LengthDelimitedCodecError};
 
-mod lines_codec;
-pub use self::lines_codec::{LinesCodec, LinesCodecError};
+//mod lines_codec;
+//pub use self::lines_codec::{LinesCodec, LinesCodecError};
 
-mod any_delimiter_codec;
-pub use self::any_delimiter_codec::{AnyDelimiterCodec, AnyDelimiterCodecError};
+//mod any_delimiter_codec;
+//pub use self::any_delimiter_codec::{AnyDelimiterCodec, AnyDelimiterCodecError};

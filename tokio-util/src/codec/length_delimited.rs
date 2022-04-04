@@ -374,7 +374,7 @@
 
 use crate::codec::{Decoder, Encoder, Framed, FramedRead, FramedWrite};
 
-use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf, VecWithInitialized};
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use std::error::Error as StdError;
@@ -471,7 +471,7 @@ impl LengthDelimitedCodec {
         self.builder.max_frame_length(val);
     }
 
-    fn decode_head(&mut self, src: &mut BytesMut) -> io::Result<Option<usize>> {
+    fn decode_head(&mut self, src: &[u8]) -> io::Result<Option<usize>> {
         let head_len = self.builder.num_head_bytes();
         let field_len = self.builder.length_field_len;
 
@@ -481,7 +481,7 @@ impl LengthDelimitedCodec {
         }
 
         let n = {
-            let mut src = Cursor::new(&mut *src);
+            let mut src = Cursor::new(src);
 
             // Skip the required bytes
             src.advance(self.builder.length_field_offset);
@@ -522,27 +522,17 @@ impl LengthDelimitedCodec {
             }
         };
 
-        let num_skip = self.builder.get_num_skip();
-
-        if num_skip > 0 {
-            src.advance(num_skip);
-        }
-
-        // Ensure that the buffer has enough space to read the incoming
-        // payload
-        src.reserve(n);
-
         Ok(Some(n))
     }
 
-    fn decode_data(&self, n: usize, src: &mut BytesMut) -> Option<BytesMut> {
+    fn decode_data(&self, n: usize, src: &[u8]) -> Option<BytesMut> {
         // At this point, the buffer has already had the required capacity
         // reserved. All there is to do is read.
         if src.len() < n {
             return None;
         }
 
-        Some(src.split_to(n))
+        Some(src[..n].into())
     }
 }
 
@@ -550,10 +540,13 @@ impl Decoder for LengthDelimitedCodec {
     type Item = BytesMut;
     type Error = io::Error;
 
-    fn decode(&mut self, src: &mut BytesMut) -> io::Result<Option<BytesMut>> {
+    fn decode(&mut self, src: &mut VecWithInitialized<Vec<u8>>) -> io::Result<Option<BytesMut>> {
         let n = match self.state {
-            DecodeState::Head => match self.decode_head(src)? {
+            DecodeState::Head => match self.decode_head(src.get_read_buf().filled())? {
                 Some(n) => {
+                    // Ensure that the buffer has enough space to read the incoming
+                    // payload
+                    src.reserve(n);
                     self.state = DecodeState::Data(n);
                     n
                 }
@@ -562,8 +555,16 @@ impl Decoder for LengthDelimitedCodec {
             DecodeState::Data(n) => n,
         };
 
-        match self.decode_data(n, src) {
+        let rb = src.get_read_buf();
+        let mut databuf = rb.filled();
+        let num_skip = self.builder.get_num_skip();
+        if num_skip > 0 {
+            databuf = &databuf[num_skip..];
+        }
+        match self.decode_data(n, databuf) {
             Some(data) => {
+                // TODO: don't perform a memcpy every time a frame is read
+                src.drop_first(num_skip + n);
                 // Update the decode state
                 self.state = DecodeState::Head;
 

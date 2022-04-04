@@ -2,7 +2,7 @@ use crate::codec::framed_impl::{FramedImpl, ReadFrame};
 use crate::codec::Decoder;
 
 use futures_core::Stream;
-use tokio::io::AsyncRead;
+use tokio::io::{AsyncRead, ReadBuf, VecWithInitialized};
 
 use bytes::BytesMut;
 use futures_sink::Sink;
@@ -50,7 +50,7 @@ where
                 state: ReadFrame {
                     eof: false,
                     is_readable: false,
-                    buffer: BytesMut::with_capacity(capacity),
+                    buffer: VecWithInitialized::new(Vec::with_capacity(capacity)),
                     has_errored: false,
                 },
             },
@@ -134,14 +134,14 @@ impl<T, D> FramedRead<T, D> {
         self.project().inner.project().codec
     }
 
-    /// Returns a reference to the read buffer.
-    pub fn read_buffer(&self) -> &BytesMut {
-        &self.inner.state.buffer
-    }
+    ///// Returns a reference to the read buffer.
+    //pub fn read_buffer(&self) -> &BytesMut {
+    //    &self.inner.state.buffer
+    //}
 
     /// Returns a mutable reference to the read buffer.
-    pub fn read_buffer_mut(&mut self) -> &mut BytesMut {
-        &mut self.inner.state.buffer
+    pub fn read_buffer_mut(&mut self) -> ReadBuf<'_> {
+        self.inner.state.buffer.get_read_buf()
     }
 }
 
@@ -193,7 +193,7 @@ where
             .field("decoder", &self.decoder())
             .field("eof", &self.inner.state.eof)
             .field("is_readable", &self.inner.state.is_readable)
-            .field("buffer", &self.read_buffer())
+            .field("buffer", &0 /*&self.read_buffer()*/) // TODO
             .finish()
     }
 }
